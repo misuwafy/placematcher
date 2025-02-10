@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Deep Dive Matcher</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .search-container {
+            margin-bottom: 20px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .search-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .search-btn:hover {
+            background-color: #45a049;
+        }
+
+        #results {
+            margin-top: 20px;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .results-table th, 
+        .results-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        .results-table th {
+            background-color: #f5f5f5;
+        }
+
+        .results-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Location Deep Dive Matcher</h1>
+    
+    <div class="search-container">
+        <input type="text" id="geocodeInput" placeholder="Enter Geocode (latitude,longitude)" class="input-field">
+        <input type="text" id="locationInput" placeholder="Enter District/Locality Name" class="input-field">
+        <button onclick="searchLocation()" class="search-btn">Search</button>
+    </div>
+
+    <div id="loading" class="loading">
+        Searching locations... Please wait...
+    </div>
+
+    <div id="error" class="error"></div>
+
+    <div id="results">
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>Location Name</th>
+                    <th>Type</th>
+                    <th>Full Address</th>
+                    <th>Geocode</th>
+                    <th>Confidence</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const NOMINATIM_API = 'https://nominatim.openstreetmap.org';
+        
+        async function searchLocation() {
+            const geocodeInput = document.getElementById('geocodeInput').value;
+            const locationInput = document.getElementById('locationInput').value;
+            
+            if (!geocodeInput && !locationInput) {
+                showError('Please enter either a geocode or location name');
+                return;
+            }
+
+            showLoading(true);
+            clearResults();
+            clearError();
+
+            try {
+                if (locationInput) {
+                    await searchByLocation(locationInput);
+                }
+                if (geocodeInput) {
+                    await searchByGeocode(geocodeInput);
+                }
+            } catch (error) {
+                showError('Error searching locations: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function searchByLocation(location) {
+            const params = new URLSearchParams({
+                q: location,
+                format: 'json',
+                addressdetails: 1,
+                limit: 10
+            });
+
+            const response = await fetch(`${NOMINATIM_API}/search?${params}`);
+            const data = await response.json();
+
+            displayResults(data);
+        }
+
+        async function searchByGeocode(geocode) {
+            const [lat, lon] = geocode.split(',').map(coord => coord.trim());
+            
+            if (!isValidCoordinate(lat, lon)) {
+                showError('Invalid geocode format. Please use latitude,longitude');
+                return;
+            }
+
+            const params = new URLSearchParams({
+                lat: lat,
+                lon: lon,
+                format: 'json',
+                addressdetails: 1
+            });
+
+            const response = await fetch(`${NOMINATIM_API}/reverse?${params}`);
+            const data = await response.json();
+
+            displayResults([data]);
+        }
+
+        function isValidCoordinate(lat, lon) {
+            const validLat = !isNaN(lat) && lat >= -90 && lat <= 90;
+            const validLon = !isNaN(lon) && lon >= -180 && lon <= 180;
+            return validLat && validLon;
+        }
+
+        function displayResults(results) {
+            const resultsBody = document.getElementById('resultsBody');
+
+            if (!results || results.length === 0) {
+                const row = resultsBody.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 5;
+                cell.textContent = 'No results found';
+                return;
+            }
+
+            results.forEach(result => {
+                const row = resultsBody.insertRow();
+                
+                // Location Name
+                row.insertCell(0).textContent = result.display_name.split(',')[0];
+                
+                // Type
+                row.insertCell(1).textContent = result.type || 'N/A';
+                
+                // Full Address
+                row.insertCell(2).textContent = result.display_name;
+                
+                // Geocode
+                row.insertCell(3).textContent = `${result.lat}, ${result.lon}`;
+                
+                // Confidence
+                row.insertCell(4).textContent = 
+                    result.importance ? 
+                    `${(result.importance * 100).toFixed(2)}%` : 
+                    'N/A';
+            });
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function clearError() {
+            document.getElementById('error').style.display = 'none';
+        }
+
+        function clearResults() {
+            document.getElementById('resultsBody').innerHTML = '';
+        }
+    </script>
+</body>
+</html>
